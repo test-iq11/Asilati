@@ -1,0 +1,75 @@
+name: Build Asilati Android
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'asilati-flutter-v1.0.0.zip'
+      - '.github/workflows/build-asilati-android.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      FLUTTER_VERSION: '3.47.9'
+      SOURCE_ZIP: asilati-flutter-v1.0.0.zip
+      CI: 'true'
+      FLUTTER_SUPPRESS_ANALYTICS: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract source ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$SOURCE_ZIP" || { echo "::error::Upload $SOURCE_ZIP in the repository root"; exit 1; }
+          unzip -tq "$SOURCE_ZIP"
+          mkdir -p .build_source
+          unzip -q "$SOURCE_ZIP" -d .build_source
+          test -f .build_source/pubspec.yaml
+          test -s .build_source/android/gradle/wrapper/gradle-wrapper.jar
+          chmod +x .build_source/android/gradlew
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Resolve locked packages
+        working-directory: .build_source
+        run: flutter pub get --enforce-lockfile
+      - name: Analyze
+        working-directory: .build_source
+        run: flutter analyze --no-pub
+      - name: Run Flutter tests
+        working-directory: .build_source
+        run: flutter test --no-pub
+      - name: Test OCR and document export
+        working-directory: .build_source
+        run: |
+          python3 -m venv "$RUNNER_TEMP/asilati-tests"
+          "$RUNNER_TEMP/asilati-tests/bin/pip" install 'playwright==1.56.0'
+          "$RUNNER_TEMP/asilati-tests/bin/python" tool/editor_test.py
+      - name: Build release APK
+        working-directory: .build_source
+        run: flutter build apk --release --no-pub
+      - name: Collect APK
+        run: |
+          mkdir -p artifacts
+          cp .build_source/build/app/outputs/flutter-apk/app-release.apk artifacts/asilati-v1.0.0.apk
+          test -s artifacts/asilati-v1.0.0.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: asilati-v1.0.0-apk
+          path: artifacts/asilati-v1.0.0.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: asilati-v1.0.0-source
+          path: asilati-flutter-v1.0.0.zip
+          if-no-files-found: error
