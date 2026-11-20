@@ -63,12 +63,7 @@ jobs:
           test -f android/gradlew
           test -s assets/tessdata/ara.traineddata
           test -s assets/tessdata/eng.traineddata
-
-      - name: Source preflight (before Flutter analyzer)
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$PROJECT_DIR"
+          # flutter create can update Android scaffolding; re-check the compatible versions.
           python3 tool/source_preflight.py
 
       - name: Resolve Flutter dependencies
@@ -77,6 +72,15 @@ jobs:
           set -euo pipefail
           cd "$PROJECT_DIR"
           flutter pub get
+
+      - name: Verify Android toolchain versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          grep 'distributionUrl=' android/gradle/wrapper/gradle-wrapper.properties
+          grep -E 'com.android.application|org.jetbrains.kotlin.android' android/settings.gradle.kts
+          java -version
 
       - name: Static analysis and unit tests
         shell: bash
