@@ -34,7 +34,7 @@ jobs:
           set -euo pipefail
           mapfile -t zips < <(find . -maxdepth 1 -type f -name 'waraqi_flutter_v*.zip' -printf '%f\n' | sort -V)
           if [ "${#zips[@]}" -eq 0 ]; then
-            echo 'ERROR: Upload waraqi_flutter_v1_1_8.zip to the repository ROOT without extracting it.' >&2
+            echo 'ERROR: Upload waraqi_flutter_v1_4_0.zip to the repository ROOT without extracting it.' >&2
             exit 1
           fi
           selected="${zips[$((${#zips[@]} - 1))]}"
@@ -54,7 +54,27 @@ jobs:
         run: |
           set -euo pipefail
           cd "$PROJECT_DIR"
+          # Preserve the tested Android configuration and the native voice
+          # bridge, so flutter create cannot silently replace them.
+          PRESERVED_ANDROID="$(mktemp -d)"
+          preserve_files=(
+            android/app/src/main/kotlin/com/waraqi/studio/MainActivity.kt
+            android/app/src/main/AndroidManifest.xml
+            android/app/build.gradle.kts
+            android/settings.gradle.kts
+            android/gradle/wrapper/gradle-wrapper.properties
+            android/gradle.properties
+          )
+          for file in "${preserve_files[@]}"; do
+            test -f "$file"
+            mkdir -p "$PRESERVED_ANDROID/$(dirname "$file")"
+            cp "$file" "$PRESERVED_ANDROID/$file"
+          done
           flutter create --platforms=android --project-name waraqi_studio --org com.waraqi --no-pub .
+          for file in "${preserve_files[@]}"; do
+            cp "$PRESERVED_ANDROID/$file" "$file"
+          done
+          rm -rf "$PRESERVED_ANDROID"
           # The default template test would refer to MyApp, not WaraqiApp.
           rm -f test/widget_test.dart
           test -f pubspec.yaml
@@ -98,20 +118,20 @@ jobs:
           flutter build apk --release --no-pub 2>&1 | tee "$GITHUB_WORKSPACE/flutter-build.log"
           test -s build/app/outputs/flutter-apk/app-release.apk
           mkdir -p "$GITHUB_WORKSPACE/dist"
-          cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/dist/waraqi-v1.1.8.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/dist/waraqi-v1.4.0.apk"
 
       - name: Create verified source archive
         shell: bash
         run: |
           set -euo pipefail
           cd "$PROJECT_DIR"
-          zip -qr "$GITHUB_WORKSPACE/dist/waraqi-v1.1.8-source.zip" . \
+          zip -qr "$GITHUB_WORKSPACE/dist/waraqi-v1.4.0-source.zip" . \
             -x 'build/*' '.dart_tool/*' '.gradle/*' 'android/.gradle/*'
 
       - name: Upload APK and source
         uses: actions/upload-artifact@v4
         with:
-          name: waraqi-flutter-android-v1.1.8
+          name: waraqi-flutter-android-v1.4.0
           path: dist/
           if-no-files-found: error
 
@@ -119,7 +139,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: waraqi-diagnostic-logs-v1.1.8
+          name: waraqi-diagnostic-logs-v1.4.0
           path: |
             flutter-analyze.log
             flutter-test.log
