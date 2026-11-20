@@ -34,11 +34,12 @@ jobs:
           set -euo pipefail
           mapfile -t zips < <(find . -maxdepth 1 -type f -name 'waraqi_flutter_v*.zip' -printf '%f\n' | sort -V)
           if [ "${#zips[@]}" -eq 0 ]; then
-            echo 'ERROR: Upload waraqi_flutter_v1_1_1.zip to the repository ROOT without extracting it.' >&2
+            echo 'ERROR: Upload waraqi_flutter_v1_1_2.zip to the repository ROOT without extracting it.' >&2
             exit 1
           fi
           selected="${zips[$((${#zips[@]} - 1))]}"
           echo "Using $selected"
+          unzip -tq "$selected" >/dev/null
           mkdir -p .build_source
           unzip -q "$selected" -d .build_source
           mapfile -t projects < <(find .build_source -maxdepth 3 -name pubspec.yaml -type f | sort)
@@ -63,6 +64,13 @@ jobs:
           test -s assets/tessdata/ara.traineddata
           test -s assets/tessdata/eng.traineddata
 
+      - name: Source preflight (before Flutter analyzer)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          python3 tool/source_preflight.py
+
       - name: Resolve Flutter dependencies
         shell: bash
         run: |
@@ -75,8 +83,8 @@ jobs:
         run: |
           set -euo pipefail
           cd "$PROJECT_DIR"
-          flutter analyze
-          flutter test
+          flutter analyze 2>&1 | tee "$GITHUB_WORKSPACE/flutter-analyze.log"
+          flutter test --reporter expanded 2>&1 | tee "$GITHUB_WORKSPACE/flutter-test.log"
 
       - name: Build APK
         shell: bash
@@ -86,19 +94,29 @@ jobs:
           flutter build apk --release --no-pub
           test -s build/app/outputs/flutter-apk/app-release.apk
           mkdir -p "$GITHUB_WORKSPACE/dist"
-          cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/dist/waraqi-v1.1.1.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/dist/waraqi-v1.1.2.apk"
 
       - name: Create verified source archive
         shell: bash
         run: |
           set -euo pipefail
           cd "$PROJECT_DIR"
-          zip -qr "$GITHUB_WORKSPACE/dist/waraqi-v1.1.1-source.zip" . \
-            -x 'build/*' '.dart_tool/*' '.gradle/*' 'android/.gradle/*' '*.lock'
+          zip -qr "$GITHUB_WORKSPACE/dist/waraqi-v1.1.2-source.zip" . \
+            -x 'build/*' '.dart_tool/*' '.gradle/*' 'android/.gradle/*'
 
       - name: Upload APK and source
         uses: actions/upload-artifact@v4
         with:
-          name: waraqi-flutter-android-v1.1.1
+          name: waraqi-flutter-android-v1.1.2
           path: dist/
           if-no-files-found: error
+
+      - name: Upload diagnostic logs even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: waraqi-diagnostic-logs-v1.1.2
+          path: |
+            flutter-analyze.log
+            flutter-test.log
+          if-no-files-found: ignore
