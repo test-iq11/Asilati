@@ -34,7 +34,7 @@ jobs:
           set -euo pipefail
           mapfile -t zips < <(find . -maxdepth 1 -type f -name 'waraqi_flutter_v*.zip' -printf '%f\n' | sort -V)
           if [ "${#zips[@]}" -eq 0 ]; then
-            echo 'ERROR: Upload waraqi_flutter_v1_1_5.zip to the repository ROOT without extracting it.' >&2
+            echo 'ERROR: Upload waraqi_flutter_v1_1_6.zip to the repository ROOT without extracting it.' >&2
             exit 1
           fi
           selected="${zips[$((${#zips[@]} - 1))]}"
@@ -98,20 +98,20 @@ jobs:
           flutter build apk --release --no-pub 2>&1 | tee "$GITHUB_WORKSPACE/flutter-build.log"
           test -s build/app/outputs/flutter-apk/app-release.apk
           mkdir -p "$GITHUB_WORKSPACE/dist"
-          cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/dist/waraqi-v1.1.5.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/dist/waraqi-v1.1.6.apk"
 
       - name: Create verified source archive
         shell: bash
         run: |
           set -euo pipefail
           cd "$PROJECT_DIR"
-          zip -qr "$GITHUB_WORKSPACE/dist/waraqi-v1.1.5-source.zip" . \
+          zip -qr "$GITHUB_WORKSPACE/dist/waraqi-v1.1.6-source.zip" . \
             -x 'build/*' '.dart_tool/*' '.gradle/*' 'android/.gradle/*'
 
       - name: Upload APK and source
         uses: actions/upload-artifact@v4
         with:
-          name: waraqi-flutter-android-v1.1.5
+          name: waraqi-flutter-android-v1.1.6
           path: dist/
           if-no-files-found: error
 
@@ -119,7 +119,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: waraqi-diagnostic-logs-v1.1.5
+          name: waraqi-diagnostic-logs-v1.1.6
           path: |
             flutter-analyze.log
             flutter-test.log
