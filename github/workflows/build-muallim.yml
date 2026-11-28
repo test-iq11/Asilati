@@ -2,12 +2,6 @@ name: Build Muallim Android
 on:
   workflow_dispatch:
   push:
-    branches: [main]
-    paths:
-      - 'Muallim-Flutter.zip'
-      - 'muallim/**'
-      - '.github/workflows/build-muallim.yml'
-      - 'pubspec.yaml'
 permissions:
   contents: read
 jobs:
