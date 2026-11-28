@@ -1,0 +1,61 @@
+name: Build Muallim Android
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'Muallim-Flutter.zip'
+      - 'muallim/**'
+      - '.github/workflows/build-muallim.yml'
+      - 'pubspec.yaml'
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.7'
+          channel: stable
+          cache: true
+      - name: Locate Flutter source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f pubspec.yaml && -f lib/main.dart ]]; then
+            project="$PWD"
+          elif [[ -f muallim/pubspec.yaml ]]; then
+            project="$PWD/muallim"
+          elif [[ -f Muallim-Flutter.zip ]]; then
+            mkdir -p "$RUNNER_TEMP/muallim-source"
+            unzip -q Muallim-Flutter.zip -d "$RUNNER_TEMP/muallim-source"
+            project="$RUNNER_TEMP/muallim-source/muallim"
+          else
+            echo 'Upload Muallim-Flutter.zip to the root of this repository.' >&2
+            exit 1
+          fi
+          test -f "$project/pubspec.yaml"
+          echo "PROJECT_DIR=$project" >> "$GITHUB_ENV"
+      - name: Prepare Android and Arabic PDF font
+        run: cd "$PROJECT_DIR" && bash tool/prepare_android.sh
+      - name: Install dependencies
+        run: cd "$PROJECT_DIR" && flutter pub get
+      - name: Analyze Dart
+        run: cd "$PROJECT_DIR" && flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Run tests
+        run: cd "$PROJECT_DIR" && flutter test
+      - name: Build Android APK
+        run: cd "$PROJECT_DIR" && flutter build apk --release
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Muallim-Android
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
