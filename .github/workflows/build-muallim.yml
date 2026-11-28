@@ -1,5 +1,5 @@
 name: Build Muallim Android
-on:
+'on':
   workflow_dispatch:
   push:
 permissions:
@@ -7,9 +7,36 @@ permissions:
 jobs:
   android:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
+      - name: Locate source and initialize reports
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/muallim-logs"
+          exec > >(tee "$RUNNER_TEMP/muallim-logs/source.log") 2>&1
+          if [[ -f Muallim-Flutter.zip ]]; then
+            mkdir -p "$RUNNER_TEMP/muallim-source"
+            unzip -t Muallim-Flutter.zip
+            unzip -q Muallim-Flutter.zip -d "$RUNNER_TEMP/muallim-source"
+            project="$RUNNER_TEMP/muallim-source/muallim"
+          elif [[ -f pubspec.yaml && -f lib/main.dart ]]; then
+            project="$PWD"
+          elif [[ -f muallim/pubspec.yaml ]]; then
+            project="$PWD/muallim"
+          else
+            echo 'ERROR: Upload Muallim-Flutter.zip to the repository root.' >&2
+            exit 1
+          fi
+          test -f "$project/pubspec.yaml"
+          test -f "$project/lib/main.dart"
+          test -f "$project/tool/prepare_android.sh"
+          echo "PROJECT_DIR=$project" >> "$GITHUB_ENV"
+          echo "Project: $project"
+          grep '^version:' "$project/pubspec.yaml"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -19,37 +46,44 @@ jobs:
           flutter-version: '3.35.7'
           channel: stable
           cache: true
-      - name: Locate Flutter source
-        shell: bash
+      - name: Prepare Android and Arabic font
         run: |
           set -euo pipefail
-          if [[ -f pubspec.yaml && -f lib/main.dart ]]; then
-            project="$PWD"
-          elif [[ -f muallim/pubspec.yaml ]]; then
-            project="$PWD/muallim"
-          elif [[ -f Muallim-Flutter.zip ]]; then
-            mkdir -p "$RUNNER_TEMP/muallim-source"
-            unzip -q Muallim-Flutter.zip -d "$RUNNER_TEMP/muallim-source"
-            project="$RUNNER_TEMP/muallim-source/muallim"
-          else
-            echo 'Upload Muallim-Flutter.zip to the root of this repository.' >&2
-            exit 1
-          fi
-          test -f "$project/pubspec.yaml"
-          echo "PROJECT_DIR=$project" >> "$GITHUB_ENV"
-      - name: Prepare Android and Arabic PDF font
-        run: cd "$PROJECT_DIR" && bash tool/prepare_android.sh
-      - name: Install dependencies
-        run: cd "$PROJECT_DIR" && flutter pub get
+          cd "$PROJECT_DIR"
+          { flutter --version; java -version; bash tool/prepare_android.sh; } 2>&1 | tee "$RUNNER_TEMP/muallim-logs/prepare.log"
+      - name: Resolve dependencies
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          flutter pub get 2>&1 | tee "$RUNNER_TEMP/muallim-logs/pub-get.log"
+          cp pubspec.lock "$RUNNER_TEMP/muallim-logs/"
       - name: Analyze Dart
-        run: cd "$PROJECT_DIR" && flutter analyze --no-fatal-infos --no-fatal-warnings
-      - name: Run tests
-        run: cd "$PROJECT_DIR" && flutter test
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee "$RUNNER_TEMP/muallim-logs/analyze.log"
+      - name: Run Flutter tests
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          flutter test --reporter expanded 2>&1 | tee "$RUNNER_TEMP/muallim-logs/tests.log"
       - name: Build Android APK
-        run: cd "$PROJECT_DIR" && flutter build apk --release
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          flutter build apk --release 2>&1 | tee "$RUNNER_TEMP/muallim-logs/build.log"
+          test -s build/app/outputs/flutter-apk/app-release.apk
+          unzip -t build/app/outputs/flutter-apk/app-release.apk > "$RUNNER_TEMP/muallim-logs/apk-check.log"
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Muallim-Android
           path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
+      - name: Upload diagnostic logs even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Muallim-Build-Report
+          path: ${{ runner.temp }}/muallim-logs/
+          if-no-files-found: warn
